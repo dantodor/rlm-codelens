@@ -4,7 +4,7 @@ This module provides utility functions for cost tracking and secure logging.
 
 Example:
     >>> from rlm_codelens.utils import CostTracker
-    >>> tracker = CostTracker(budget_limit=50.0)
+    >>> tracker = CostTracker()
 """
 
 from rlm_codelens.utils.cost_tracker import CostTracker

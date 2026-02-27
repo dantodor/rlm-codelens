@@ -264,7 +264,6 @@ def analyze_architecture(
     backend: Optional[str] = None,
     model: Optional[str] = None,
     base_url: Optional[str] = None,
-    budget: float = 10.0,
     output: str = "outputs/architecture.json",
 ) -> None:
     """Analyze codebase architecture from scan data.
@@ -276,7 +275,6 @@ def analyze_architecture(
         backend: RLM backend name
         model: RLM model name
         base_url: Override API base URL (e.g. http://localhost:11434/v1 for Ollama)
-        budget: RLM budget limit
         output: Output JSON file path
     """
     from rlm_codelens.codebase_graph import CodebaseGraphAnalyzer
@@ -356,10 +354,22 @@ def analyze_architecture(
 
         try:
             from rlm_codelens.architecture_analyzer import ArchitectureRLMAnalyzer
+            from rlm_codelens.config import OPENROUTER_API_KEY
 
             rlm_backend = backend or RLM_BACKEND
             rlm_base_url = base_url or RLM_BASE_URL or None
             rlm_model = model or RLM_MODEL
+            rlm_api_key: Optional[str] = None
+
+            # Resolve API key for OpenRouter
+            if rlm_base_url and "openrouter.ai" in rlm_base_url:
+                rlm_api_key = OPENROUTER_API_KEY
+                if not rlm_api_key:
+                    print(
+                        "\n❌ OPENROUTER_API_KEY not set. "
+                        "Set it in your .env file or environment."
+                    )
+                    return
 
             # Interactive model selection when using Ollama without explicit --model
             if rlm_base_url and not model and "11434" in rlm_base_url:
@@ -376,14 +386,13 @@ def analyze_architecture(
             print(f"Model: {rlm_model}")
             if rlm_base_url:
                 print(f"Base URL: {rlm_base_url}")
-            print(f"Budget: ${budget:.2f}")
 
             rlm_analyzer = ArchitectureRLMAnalyzer(
                 structure=structure,
                 backend=rlm_backend,
                 model=rlm_model,
                 base_url=rlm_base_url,
-                budget=budget,
+                api_key=rlm_api_key,
             )
 
             graph_metrics = {
@@ -427,7 +436,7 @@ def analyze_architecture(
 
             cost = rlm_results.get("cost_summary", {})
             print(
-                f"\n💰 RLM Cost: ${cost.get('total_cost', 0):.4f} / ${cost.get('budget', budget):.2f}"
+                f"\n💰 RLM Cost: ${cost.get('total_cost', 0):.4f} ({cost.get('calls', 0)} calls)"
             )
 
         except Exception as e:

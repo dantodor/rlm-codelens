@@ -1,14 +1,11 @@
 """
 Cost tracking utilities for monitoring API usage
-Helps stay within budget limits
 """
 
 import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from rlm_codelens.config import BUDGET_ALERT_THRESHOLD, BUDGET_LIMIT
 
 # Cost estimates per 1M tokens
 COSTS: Dict[str, Dict[str, float]] = {
@@ -25,13 +22,8 @@ class CostTracker:
 
     def __init__(
         self,
-        budget_limit: float = BUDGET_LIMIT,
         log_file: Optional[str] = None,
     ) -> None:
-        self.budget_limit = budget_limit
-        # Handle case where BUDGET_ALERT_THRESHOLD might be None
-        alert_pct = BUDGET_ALERT_THRESHOLD if BUDGET_ALERT_THRESHOLD is not None else 80
-        self.alert_threshold = budget_limit * (alert_pct / 100)
         self.current_cost = 0.0
         self.cost_breakdown: Dict[str, Any] = {}
         self.calls_log: List[Dict[str, Any]] = []
@@ -129,34 +121,14 @@ class CostTracker:
         }
         self.calls_log.append(call_entry)
 
-        # Check budget
-        self._check_budget()
-
         # Save log
         self._save_log()
-
-    def _check_budget(self) -> None:
-        """Check if approaching budget limit"""
-        percentage = (self.current_cost / self.budget_limit) * 100
-
-        if self.current_cost >= self.budget_limit:
-            raise BudgetExceededError(
-                f"Budget exceeded! ${self.current_cost:.2f} / ${self.budget_limit:.2f}"
-            )
-
-        if self.current_cost >= self.alert_threshold and not hasattr(self, "_alerted"):
-            print(
-                f"\n⚠️  BUDGET ALERT: ${self.current_cost:.2f} / ${self.budget_limit:.2f} ({percentage:.1f}%)"
-            )
-            self._alerted = True
 
     def _save_log(self) -> None:
         """Save cost log to file"""
         log_data = {
             "timestamp": datetime.now().isoformat(),
-            "budget_limit": self.budget_limit,
             "current_cost": self.current_cost,
-            "percentage_used": (self.current_cost / self.budget_limit) * 100,
             "breakdown": self.cost_breakdown,
             "calls": self.calls_log[-100:],  # Keep last 100 calls
         }
@@ -169,8 +141,7 @@ class CostTracker:
         print("\n" + "=" * 60)
         print("COST SUMMARY")
         print("=" * 60)
-        print(f"Total Cost: ${self.current_cost:.2f} / ${self.budget_limit:.2f}")
-        print(f"Percentage Used: {(self.current_cost / self.budget_limit) * 100:.1f}%")
+        print(f"Total Cost: ${self.current_cost:.2f}")
         print("\nBreakdown:")
 
         for category, data in self.cost_breakdown.items():
@@ -190,17 +161,8 @@ class CostTracker:
         """Get cost summary as dictionary"""
         return {
             "total_cost": self.current_cost,
-            "budget_limit": self.budget_limit,
-            "percentage_used": (self.current_cost / self.budget_limit) * 100,
             "breakdown": self.cost_breakdown,
-            "remaining_budget": self.budget_limit - self.current_cost,
         }
-
-
-class BudgetExceededError(Exception):
-    """Exception raised when budget is exceeded"""
-
-    pass
 
 
 def format_cost(cost: float) -> str:
@@ -212,7 +174,7 @@ def format_cost(cost: float) -> str:
 
 if __name__ == "__main__":
     # Test cost tracker
-    tracker = CostTracker(budget_limit=10.0)
+    tracker = CostTracker()
 
     # Simulate some API calls
     tracker.add_embedding_call(1_000_000, "text-embedding-3-small")

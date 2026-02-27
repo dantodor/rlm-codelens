@@ -30,10 +30,13 @@ Examples:
   rlmc analyze-architecture scan.json --output arch.json
 
   # Analyze with RLM-powered deep analysis
-  rlmc analyze-architecture scan.json --deep --budget 5.0
+  rlmc analyze-architecture scan.json --deep
 
   # Analyze with Ollama (free, local)
   rlmc analyze-architecture scan.json --ollama --model deepseek-r1:latest
+
+  # Analyze with OpenRouter (requires OPENROUTER_API_KEY env var)
+  rlmc analyze-architecture scan.json --openrouter --model anthropic/claude-sonnet-4
 
   # Generate interactive architecture visualization
   rlmc visualize-arch arch.json
@@ -111,6 +114,11 @@ Examples:
         help="Use local Ollama for deep analysis (shorthand for --backend openai --base-url http://localhost:11434/v1)",
     )
     arch_parser.add_argument(
+        "--openrouter",
+        action="store_true",
+        help="Use OpenRouter for deep analysis (shorthand for --backend openai --base-url https://openrouter.ai/api/v1). Requires OPENROUTER_API_KEY env var.",
+    )
+    arch_parser.add_argument(
         "--backend",
         default=None,
         help="RLM backend (default: from RLM_BACKEND env or 'openai')",
@@ -124,12 +132,6 @@ Examples:
         "--base-url",
         default=None,
         help="Override API base URL (e.g. http://localhost:11434/v1 for Ollama)",
-    )
-    arch_parser.add_argument(
-        "--budget",
-        type=float,
-        default=10.0,
-        help="RLM budget limit in USD (default: 10.0)",
     )
     arch_parser.add_argument(
         "--output",
@@ -239,6 +241,10 @@ def main(args: Optional[List[str]] = None) -> int:
                 deep = True
                 backend = backend or "openai"
                 base_url = base_url or "http://localhost:11434/v1"
+            elif parsed_args.openrouter:
+                deep = True
+                backend = backend or "openai"
+                base_url = base_url or "https://openrouter.ai/api/v1"
 
             analyze_architecture(
                 scan_file=parsed_args.scan_file,
@@ -247,7 +253,6 @@ def main(args: Optional[List[str]] = None) -> int:
                 backend=backend,
                 model=parsed_args.model,
                 base_url=base_url,
-                budget=parsed_args.budget,
                 output=parsed_args.output,
             )
             return 0

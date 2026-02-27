@@ -19,10 +19,7 @@ OUTPUTS_DIR.mkdir(exist_ok=True)
 # API Keys (for --deep RLM analysis)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-
-# Budget
-BUDGET_LIMIT = float(os.getenv("BUDGET_LIMIT", "50.0"))
-BUDGET_ALERT_THRESHOLD = int(os.getenv("BUDGET_ALERT_THRESHOLD", "80"))
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # RLM Architecture Analyzer Configuration
 RLM_BACKEND = os.getenv("RLM_BACKEND", "openai")

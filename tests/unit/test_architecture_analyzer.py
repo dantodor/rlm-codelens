@@ -70,31 +70,13 @@ class TestImportGuard:
                 mod.RLM_AVAILABLE = original
 
 
-class TestBudgetTracker:
-    """Test RLMCostTracker budget enforcement."""
-
-    def test_budget_exceeded(self) -> None:
-        from rlm_codelens.architecture_analyzer import (
-            BudgetExceededError,
-            RLMCostTracker,
-        )
-
-        tracker = RLMCostTracker(budget=1.0)
-        tracker.total_cost = 1.5
-        with pytest.raises(BudgetExceededError):
-            tracker.check_budget()
-
-    def test_budget_not_exceeded(self) -> None:
-        from rlm_codelens.architecture_analyzer import RLMCostTracker
-
-        tracker = RLMCostTracker(budget=10.0)
-        tracker.total_cost = 5.0
-        tracker.check_budget()  # Should not raise
+class TestCostTracker:
+    """Test RLMCostTracker cost tracking."""
 
     def test_record_tracks_calls(self) -> None:
         from rlm_codelens.architecture_analyzer import RLMCostTracker
 
-        tracker = RLMCostTracker(budget=10.0)
+        tracker = RLMCostTracker()
 
         # Mock result with usage
         result = MagicMock()
@@ -110,15 +92,13 @@ class TestBudgetTracker:
     def test_summary(self) -> None:
         from rlm_codelens.architecture_analyzer import RLMCostTracker
 
-        tracker = RLMCostTracker(budget=10.0)
+        tracker = RLMCostTracker()
         tracker.total_cost = 2.5
         tracker.calls = 3
 
         summary = tracker.summary()
-        assert summary["budget"] == 10.0
         assert summary["total_cost"] == 2.5
         assert summary["calls"] == 3
-        assert summary["remaining"] == pytest.approx(7.5)
 
 
 class TestArchitectureRLMAnalyzerMocked:
@@ -150,7 +130,6 @@ class TestArchitectureRLMAnalyzerMocked:
                 simple_structure,
                 backend="openai",
                 model="gpt-4o",
-                budget=10.0,
                 verbose=False,
             )
             # Ensure the instance uses our mock
@@ -280,21 +259,6 @@ class TestArchitectureRLMAnalyzerMocked:
         assert "cost_summary" in results
         assert results["cost_summary"]["calls"] == 4
 
-    def test_budget_enforcement(self, analyzer: Any, mock_rlm: MagicMock) -> None:
-        """After exceeding budget, run_all should still return partial results."""
-        analyzer.cost_tracker.budget = 0.001  # Very low budget
-
-        # First call succeeds but exceeds budget
-        result = MagicMock()
-        result.response = json.dumps({"src/main.py": "business"})
-        result.usage = MagicMock()
-        result.usage.total_cost = 0.01
-        mock_rlm.completion.return_value = result
-
-        results = analyzer.run_all()
-        # Should still have results (run_all catches BudgetExceededError)
-        assert "cost_summary" in results
-
 
 class TestStripMarkdownFences:
     """Test _strip_markdown_fences helper for robust RLM response parsing."""
@@ -363,7 +327,6 @@ class TestMarkdownFencedResponses:
                 simple_structure,
                 backend="openai",
                 model="gpt-4o",
-                budget=10.0,
                 verbose=False,
             )
             a.rlm = mock_rlm
@@ -455,7 +418,6 @@ class TestRLMOutputValidation:
                 simple_structure,
                 backend="openai",
                 model="gpt-4o",
-                budget=10.0,
                 verbose=False,
             )
             a.rlm = mock_rlm

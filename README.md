@@ -56,10 +56,13 @@ uv sync --extra dev --extra go --extra java
 uv run rlmc analyze-architecture --repo /path/to/repo
 
 # With RLM deep analysis (requires API key or Ollama)
-uv run rlmc analyze-architecture --repo /path/to/repo --deep --budget 5.0
+uv run rlmc analyze-architecture --repo /path/to/repo --deep
 
 # Or use Ollama (free, local)
 uv run rlmc analyze-architecture --repo /path/to/repo --ollama --model deepseek-r1:latest
+
+# Or use OpenRouter (access any model via openrouter.ai)
+uv run rlmc analyze-architecture --repo /path/to/repo --openrouter --model anthropic/claude-sonnet-4
 ```
 
 ### Demo (No API Keys Required)
@@ -133,6 +136,7 @@ flowchart LR
 | `rlmc analyze-architecture --repo <path>` | Scan + analyze in one step |
 | `rlmc analyze-architecture [scan.json] --deep` | RLM-powered deep analysis |
 | `rlmc analyze-architecture [scan.json] --ollama` | Local Ollama for deep analysis |
+| `rlmc analyze-architecture [scan.json] --openrouter` | OpenRouter for deep analysis |
 | `rlmc list-models` | List available Ollama models |
 | `rlmc visualize-arch <arch.json>` | Interactive D3.js visualization |
 | `rlmc generate-report <arch.json>` | HTML architecture report |
@@ -143,8 +147,8 @@ flowchart LR
 |------|-------------|
 | `--deep` | Enable RLM semantic analysis |
 | `--ollama` | Use local Ollama (free) |
-| `--budget <$>` | RLM API budget limit in USD (default: $10, env: $50) |
-| `--model <name>` | Model to use (gpt-4o, claude-sonnet-4, deepseek-r1, etc.) |
+| `--openrouter` | Use OpenRouter (requires `OPENROUTER_API_KEY`) |
+| `--model <name>` | Model to use (gpt-4o, anthropic/claude-sonnet-4, deepseek-r1, etc.) |
 | `--include-source` | Include source code for deeper analysis |
 
 ## Proven at Scale
@@ -199,10 +203,12 @@ OPENAI_API_KEY=sk-xxxxxxxxxxxx
 # Or use Anthropic
 # ANTHROPIC_API_KEY=sk-ant-xxx
 
+# Or use OpenRouter (access any model via openrouter.ai)
+# OPENROUTER_API_KEY=sk-or-xxx
+
 # Optional defaults
 RLM_BACKEND=openai          # "openai" or "anthropic"
 RLM_MODEL=gpt-4o            # Model for deep analysis
-BUDGET_LIMIT=50.0            # Max spend in USD (CLI --budget overrides this)
 ```
 
 ## Project Structure
@@ -220,7 +226,7 @@ rlm-codelens/
 │   ├── visualizer.py              # D3.js visualization generator
 │   ├── report_generator.py        # HTML report generator
 │   └── utils/
-│       ├── cost_tracker.py        # RLM API cost tracking & budget enforcement
+│       ├── cost_tracker.py        # RLM API cost tracking
 │       └── secure_logging.py      # Redacted logging for API keys
 ├── tests/
 │   ├── unit/                      # Unit tests

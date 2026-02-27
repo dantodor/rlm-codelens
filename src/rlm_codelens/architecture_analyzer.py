@@ -36,16 +36,14 @@ except ImportError:
 
 @dataclass
 class RLMCostTracker:
-    """Tracks RLM API usage and enforces a budget limit.
+    """Tracks RLM API usage.
 
     Attributes:
-        budget: Maximum allowed spend in USD
         total_cost: Accumulated cost so far
         calls: Number of RLM completion calls made
         call_log: List of per-call cost records
     """
 
-    budget: float = 10.0
     total_cost: float = 0.0
     calls: int = 0
     call_log: List[Dict[str, Any]] = field(default_factory=list)
@@ -89,25 +87,12 @@ class RLMCostTracker:
             }
         )
 
-    def check_budget(self) -> None:
-        """Raise if budget is exceeded."""
-        if self.total_cost >= self.budget:
-            raise BudgetExceededError(
-                f"RLM budget exceeded: ${self.total_cost:.2f} >= ${self.budget:.2f}"
-            )
-
     def summary(self) -> Dict[str, Any]:
         """Return a summary dict."""
         return {
-            "budget": self.budget,
             "total_cost": round(self.total_cost, 4),
             "calls": self.calls,
-            "remaining": round(self.budget - self.total_cost, 4),
         }
-
-
-class BudgetExceededError(Exception):
-    """Raised when the RLM cost budget has been exceeded."""
 
 
 _MARKDOWN_FENCE_RE = re.compile(
@@ -179,7 +164,6 @@ class ArchitectureRLMAnalyzer:
             "http://localhost:11434/v1" for Ollama).
         environment: RLM environment ("local" or "docker").
         max_iterations: Max RLM iterations per completion call.
-        budget: Maximum spend in USD.
         verbose: Print progress messages.
     """
 
@@ -192,7 +176,6 @@ class ArchitectureRLMAnalyzer:
         base_url: Optional[str] = None,
         environment: str = "local",
         max_iterations: int = 30,
-        budget: float = 10.0,
         verbose: bool = True,
     ):
         if not RLM_AVAILABLE:
@@ -205,7 +188,7 @@ class ArchitectureRLMAnalyzer:
 
         self.structure = structure
         self.verbose = verbose
-        self.cost_tracker = RLMCostTracker(budget=budget)
+        self.cost_tracker = RLMCostTracker()
 
         # Build backend kwargs
         backend_kwargs: Dict[str, Any] = {"model_name": model}
@@ -329,7 +312,6 @@ class ArchitectureRLMAnalyzer:
             Dict mapping module path to layer name.
         """
         self._log("Classifying modules into architectural layers...")
-        self.cost_tracker.check_budget()
 
         module_summary = self._build_module_summary()
 
@@ -387,7 +369,6 @@ Output ONLY the JSON object, no other text."""
             List of dicts with source, target, type, evidence keys.
         """
         self._log("Discovering hidden dependencies...")
-        self.cost_tracker.check_budget()
 
         # Build source context for modules that have source
         source_modules = {}
@@ -474,7 +455,6 @@ Output ONLY the JSON array."""
             Dict with detected_pattern, confidence, anti_patterns, reasoning.
         """
         self._log("Detecting architectural patterns...")
-        self.cost_tracker.check_budget()
 
         module_summary = self._build_module_summary()
 
@@ -566,7 +546,6 @@ Output ONLY the JSON."""
             List of refactoring suggestion strings.
         """
         self._log("Generating refactoring suggestions...")
-        self.cost_tracker.check_budget()
 
         context_parts = []
         if classifications:
@@ -626,21 +605,21 @@ Output ONLY the JSON array."""
         # Step 1: Classify modules
         try:
             results["semantic_clusters"] = self.classify_modules()
-        except (BudgetExceededError, Exception) as e:
+        except Exception as e:
             self._log(f"classify_modules failed: {e}")
             results["semantic_clusters"] = {}
 
         # Step 2: Discover hidden dependencies
         try:
             results["hidden_dependencies"] = self.discover_hidden_deps()
-        except (BudgetExceededError, Exception) as e:
+        except Exception as e:
             self._log(f"discover_hidden_deps failed: {e}")
             results["hidden_dependencies"] = []
 
         # Step 3: Detect patterns
         try:
             results["pattern_analysis"] = self.detect_patterns(graph_metrics)
-        except (BudgetExceededError, Exception) as e:
+        except Exception as e:
             self._log(f"detect_patterns failed: {e}")
             results["pattern_analysis"] = {}
 
@@ -653,7 +632,7 @@ Output ONLY the JSON array."""
                 ),
                 cycles=graph_metrics.get("cycles") if graph_metrics else None,
             )
-        except (BudgetExceededError, Exception) as e:
+        except Exception as e:
             self._log(f"suggest_refactoring failed: {e}")
             results["refactoring_suggestions"] = []
 
