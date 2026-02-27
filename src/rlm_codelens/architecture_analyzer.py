@@ -238,28 +238,14 @@ class ArchitectureRLMAnalyzer:
         else:
             return f"{', '.join(top_langs[:-1])}, and {top_langs[-1]}"
 
-    # Maximum characters for the module summary sent to the LLM.
-    # ~80K chars ≈ ~20K tokens, leaving room for prompts and responses
-    # within a 128K context window.
-    _MAX_SUMMARY_CHARS = 80_000
-
     def _build_module_summary(self) -> str:
-        """Build a compact text summary of modules for RLM context.
-
-        For large repos, prioritises hub modules (high connectivity),
-        large files, and a representative sample across packages rather
-        than dumping all modules into the prompt.
-        """
-        modules = self.structure.modules
-        total = len(modules)
-
-        # Build all lines first, then truncate if needed
-        module_lines: list[tuple[int, str]] = []
-        for path, mod in modules.items():
+        """Build a text summary of all modules for RLM context."""
+        lines: list[str] = []
+        for path, mod in self.structure.modules.items():
             classes = ", ".join(c["name"] for c in mod.classes) or "none"
-            functions = ", ".join(f["name"] for f in mod.functions[:8]) or "none"
+            functions = ", ".join(f["name"] for f in mod.functions) or "none"
             imports = mod.imports + [fi["module"] for fi in mod.from_imports]
-            imports_str = ", ".join(imports[:8]) or "none"
+            imports_str = ", ".join(imports) or "none"
             line = (
                 f"- {path} ({mod.lines_of_code} LOC) | "
                 f"pkg={mod.package} | classes=[{classes}] | "
@@ -268,38 +254,7 @@ class ArchitectureRLMAnalyzer:
             if mod.docstring:
                 doc_preview = mod.docstring[:60].replace("\n", " ")
                 line += f' | doc="{doc_preview}"'
-            # Score for prioritisation: LOC + import count favours hubs
-            score = mod.lines_of_code + len(imports) * 20
-            module_lines.append((score, line))
-
-        # If everything fits, return it all
-        all_text = "\n".join(line for _, line in module_lines)
-        if len(all_text) <= self._MAX_SUMMARY_CHARS:
-            return all_text
-
-        # Too large — sort by score descending and take top modules
-        self._log(
-            f"Module summary too large ({total} modules, {len(all_text):,} chars). "
-            f"Sampling most significant modules..."
-        )
-        module_lines.sort(key=lambda x: x[0], reverse=True)
-
-        lines = []
-        char_count = 0
-        included = 0
-        for _, line in module_lines:
-            if char_count + len(line) + 1 > self._MAX_SUMMARY_CHARS:
-                break
             lines.append(line)
-            char_count += len(line) + 1
-            included += 1
-
-        omitted = total - included
-        if omitted > 0:
-            lines.append(
-                f"\n(... {omitted} additional modules omitted for brevity. "
-                f"Total: {total} modules.)"
-            )
 
         return "\n".join(lines)
 
@@ -380,16 +335,10 @@ Output ONLY the JSON object, no other text."""
             self._log("No source code available for hidden dependency analysis")
             return []
 
-        # Truncate if too much source
-        max_chars = 50000
         context_lines = []
-        total = 0
         for path, source in source_modules.items():
-            if total + len(source) > max_chars:
-                break
             lang = getattr(self.structure.modules.get(path), "language", "python")
             context_lines.append(f"### {path}\n```{lang}\n{source}\n```\n")
-            total += len(source)
 
         context = "\n".join(context_lines)
 
