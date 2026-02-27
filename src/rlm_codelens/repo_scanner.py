@@ -267,6 +267,9 @@ class RepositoryScanner:
         "typescript": ["tree-sitter", "tree-sitter-typescript"],
         "c": ["tree-sitter", "tree-sitter-c"],
         "cpp": ["tree-sitter", "tree-sitter-c", "tree-sitter-cpp"],
+        "c_sharp": ["tree-sitter", "tree-sitter-c-sharp"],
+        "swift": ["tree-sitter", "tree-sitter-swift"],
+        "kotlin": ["tree-sitter", "tree-sitter-kotlin"],
     }
 
     def _auto_install_grammars(self, source_files: List[Path]) -> None:

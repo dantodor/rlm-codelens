@@ -43,6 +43,10 @@ Examples:
 
   # One-step: scan + analyze
   rlmc analyze-architecture --repo /path/to/repo
+
+  # Batch: analyze all repos under a folder
+  rlmc batch-analyze /path/to/customer-repos
+  rlmc batch-analyze /path/to/customer-repos --openrouter --model anthropic/claude-sonnet-4
         """,
     )
 
@@ -198,6 +202,75 @@ Examples:
         help="Don't automatically open in browser",
     )
 
+    # batch-analyze command
+    batch_parser = subparsers.add_parser(
+        "batch-analyze",
+        help="Analyze all repositories under a parent directory",
+        description="Discover immediate subdirectories under a parent folder, "
+        "analyze each one, and generate architecture JSON, HTML report, "
+        "and HTML visualization for every repository found.",
+    )
+    batch_parser.add_argument(
+        "parent_path",
+        help="Path to the parent folder containing repository subdirectories",
+    )
+    batch_parser.add_argument(
+        "--output-dir",
+        default="outputs/batch",
+        help="Directory for all output files (default: outputs/batch)",
+    )
+    batch_parser.add_argument(
+        "--deep",
+        action="store_true",
+        help="Enable RLM-powered deep analysis for each repo",
+    )
+    batch_parser.add_argument(
+        "--ollama",
+        action="store_true",
+        help="Use local Ollama for deep analysis",
+    )
+    batch_parser.add_argument(
+        "--openrouter",
+        action="store_true",
+        help="Use OpenRouter for deep analysis (requires OPENROUTER_API_KEY)",
+    )
+    batch_parser.add_argument(
+        "--backend",
+        default=None,
+        help="RLM backend (default: from RLM_BACKEND env or 'openai')",
+    )
+    batch_parser.add_argument(
+        "--model",
+        default=None,
+        help="RLM model name (default: from RLM_MODEL env or 'gpt-4o')",
+    )
+    batch_parser.add_argument(
+        "--base-url",
+        default=None,
+        help="Override API base URL",
+    )
+    batch_parser.add_argument(
+        "--exclude",
+        nargs="*",
+        default=[],
+        help="Additional directory names to exclude from scanning",
+    )
+    batch_parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop on first error instead of continuing with remaining repos",
+    )
+    batch_parser.add_argument(
+        "--skip-visualization",
+        action="store_true",
+        help="Skip generating HTML visualizations",
+    )
+    batch_parser.add_argument(
+        "--skip-report",
+        action="store_true",
+        help="Skip generating HTML reports",
+    )
+
     return parser
 
 
@@ -283,6 +356,35 @@ def main(args: Optional[List[str]] = None) -> int:
                 analysis_file=parsed_args.analysis_file,
                 output=parsed_args.output,
                 open_browser=not parsed_args.no_browser,
+            )
+            return 0
+
+        elif parsed_args.command == "batch-analyze":
+            from rlm_codelens.commands import batch_analyze
+
+            backend = parsed_args.backend
+            base_url = parsed_args.base_url
+            deep = parsed_args.deep
+            if parsed_args.ollama:
+                deep = True
+                backend = backend or "openai"
+                base_url = base_url or "http://localhost:11434/v1"
+            elif parsed_args.openrouter:
+                deep = True
+                backend = backend or "openai"
+                base_url = base_url or "https://openrouter.ai/api/v1"
+
+            batch_analyze(
+                parent_path=parsed_args.parent_path,
+                output_dir=parsed_args.output_dir,
+                deep=deep,
+                backend=backend,
+                model=parsed_args.model,
+                base_url=base_url,
+                exclude=parsed_args.exclude or None,
+                fail_fast=parsed_args.fail_fast,
+                skip_visualization=parsed_args.skip_visualization,
+                skip_report=parsed_args.skip_report,
             )
             return 0
 

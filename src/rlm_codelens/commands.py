@@ -4,6 +4,8 @@ This module contains the actual implementation of CLI commands,
 separated from argument parsing for better testability.
 """
 
+import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -278,7 +280,6 @@ def analyze_architecture(
         output: Output JSON file path
     """
     from rlm_codelens.codebase_graph import CodebaseGraphAnalyzer
-    from rlm_codelens.config import RLM_BACKEND, RLM_BASE_URL, RLM_MODEL
     from rlm_codelens.repo_scanner import RepositoryScanner, RepositoryStructure
 
     print("\n" + "=" * 70)
@@ -348,102 +349,18 @@ def analyze_architecture(
 
     # Deep RLM analysis
     if deep:
-        print(f"\n{'=' * 70}")
-        print("🤖 RLM DEEP ANALYSIS")
-        print("=" * 70)
-
-        try:
-            from rlm_codelens.architecture_analyzer import ArchitectureRLMAnalyzer
-            from rlm_codelens.config import OPENROUTER_API_KEY
-
-            rlm_backend = backend or RLM_BACKEND
-            rlm_base_url = base_url or RLM_BASE_URL or None
-            rlm_model = model or RLM_MODEL
-            rlm_api_key: Optional[str] = None
-
-            # Resolve API key for OpenRouter
-            if rlm_base_url and "openrouter.ai" in rlm_base_url:
-                rlm_api_key = OPENROUTER_API_KEY
-                if not rlm_api_key:
-                    print(
-                        "\n❌ OPENROUTER_API_KEY not set. "
-                        "Set it in your .env file or environment."
-                    )
-                    return
-
-            # Interactive model selection when using Ollama without explicit --model
-            if rlm_base_url and not model and "11434" in rlm_base_url:
-                ollama_base = rlm_base_url.rstrip("/").removesuffix("/v1")
-                print("\nOllama detected — select a model:\n")
-                selected = _select_ollama_model(ollama_base)
-                if not selected:
-                    print("\n❌ No model selected. Aborting deep analysis.")
-                    return
-                rlm_model = selected
-                print()
-
-            print(f"Backend: {rlm_backend}")
-            print(f"Model: {rlm_model}")
-            if rlm_base_url:
-                print(f"Base URL: {rlm_base_url}")
-
-            rlm_analyzer = ArchitectureRLMAnalyzer(
-                structure=structure,
-                backend=rlm_backend,
-                model=rlm_model,
-                base_url=rlm_base_url,
-                api_key=rlm_api_key,
-            )
-
-            graph_metrics = {
-                "cycles": analysis.cycles,
-                "hub_modules": analysis.hub_modules,
-                "anti_patterns": analysis.anti_patterns,
-                "total_modules": analysis.total_modules,
-                "total_edges": analysis.total_edges,
-            }
-
-            rlm_results = rlm_analyzer.run_all(graph_metrics=graph_metrics)
-
-            # Merge into analysis
-            analysis = graph_analyzer.enrich_with_rlm(rlm_results)
-
-            # Print RLM results
-            if rlm_results.get("semantic_clusters"):
-                print(
-                    f"\n🏷️  RLM Module Classifications: {len(rlm_results['semantic_clusters'])} modules classified"
-                )
-
-            if rlm_results.get("hidden_dependencies"):
-                print(
-                    f"\n🔍 Hidden Dependencies Found: {len(rlm_results['hidden_dependencies'])}"
-                )
-                for dep in rlm_results["hidden_dependencies"][:3]:
-                    print(
-                        f"   {dep.get('source', '?')} -> {dep.get('target', '?')} ({dep.get('type', '?')})"
-                    )
-
-            if rlm_results.get("pattern_analysis"):
-                pa = rlm_results["pattern_analysis"]
-                print(
-                    f"\n🏛️  Detected Pattern: {pa.get('detected_pattern', 'unknown')} (confidence: {pa.get('confidence', 0):.0%})"
-                )
-
-            if rlm_results.get("refactoring_suggestions"):
-                print("\n💡 Refactoring Suggestions:")
-                for suggestion in rlm_results["refactoring_suggestions"][:3]:
-                    print(f"   - {suggestion[:100]}")
-
-            cost = rlm_results.get("cost_summary", {})
-            print(
-                f"\n💰 RLM Cost: ${cost.get('total_cost', 0):.4f} ({cost.get('calls', 0)} calls)"
-            )
-
-        except Exception as e:
-            print(f"\n❌ RLM analysis failed: {e}")
-            import traceback
-
-            traceback.print_exc()
+        deep_result = _run_deep_analysis(
+            structure=structure,
+            graph_analyzer=graph_analyzer,
+            analysis=analysis,
+            backend=backend,
+            model=model,
+            base_url=base_url,
+            interactive_model_selection=True,
+        )
+        if deep_result is None:
+            return
+        analysis = deep_result
 
     # Save results
     analysis.save(output)
@@ -550,3 +467,353 @@ def generate_report(
         import traceback
 
         traceback.print_exc()
+
+
+def _run_deep_analysis(
+    structure: Any,
+    graph_analyzer: Any,
+    analysis: Any,
+    backend: Optional[str],
+    model: Optional[str],
+    base_url: Optional[str],
+    interactive_model_selection: bool = True,
+) -> Optional[Any]:
+    """Run RLM deep analysis and merge results into the architecture analysis.
+
+    Args:
+        structure: RepositoryStructure from scanning
+        graph_analyzer: CodebaseGraphAnalyzer instance
+        analysis: ArchitectureAnalysis from static analysis
+        backend: RLM backend name
+        model: RLM model name
+        base_url: Override API base URL
+        interactive_model_selection: Allow interactive Ollama model selection
+
+    Returns:
+        Updated ArchitectureAnalysis, or None if aborted.
+    """
+    from rlm_codelens.config import RLM_BACKEND, RLM_BASE_URL, RLM_MODEL
+
+    print(f"\n{'=' * 70}")
+    print("🤖 RLM DEEP ANALYSIS")
+    print("=" * 70)
+
+    try:
+        from rlm_codelens.architecture_analyzer import ArchitectureRLMAnalyzer
+        from rlm_codelens.config import OPENROUTER_API_KEY
+
+        rlm_backend = backend or RLM_BACKEND
+        rlm_base_url = base_url or RLM_BASE_URL or None
+        rlm_model = model or RLM_MODEL
+        rlm_api_key: Optional[str] = None
+
+        # Resolve API key for OpenRouter
+        if rlm_base_url and "openrouter.ai" in rlm_base_url:
+            rlm_api_key = OPENROUTER_API_KEY
+            if not rlm_api_key:
+                print(
+                    "\n❌ OPENROUTER_API_KEY not set. "
+                    "Set it in your .env file or environment."
+                )
+                return None
+
+        # Interactive model selection when using Ollama without explicit --model
+        if (
+            interactive_model_selection
+            and rlm_base_url
+            and not model
+            and "11434" in rlm_base_url
+        ):
+            ollama_base = rlm_base_url.rstrip("/").removesuffix("/v1")
+            print("\nOllama detected — select a model:\n")
+            selected = _select_ollama_model(ollama_base)
+            if not selected:
+                print("\n❌ No model selected. Aborting deep analysis.")
+                return None
+            rlm_model = selected
+            print()
+
+        print(f"Backend: {rlm_backend}")
+        print(f"Model: {rlm_model}")
+        if rlm_base_url:
+            print(f"Base URL: {rlm_base_url}")
+
+        rlm_analyzer = ArchitectureRLMAnalyzer(
+            structure=structure,
+            backend=rlm_backend,
+            model=rlm_model,
+            base_url=rlm_base_url,
+            api_key=rlm_api_key,
+        )
+
+        graph_metrics = {
+            "cycles": analysis.cycles,
+            "hub_modules": analysis.hub_modules,
+            "anti_patterns": analysis.anti_patterns,
+            "total_modules": analysis.total_modules,
+            "total_edges": analysis.total_edges,
+        }
+
+        rlm_results = rlm_analyzer.run_all(graph_metrics=graph_metrics)
+
+        # Merge into analysis
+        analysis = graph_analyzer.enrich_with_rlm(rlm_results)
+
+        # Print RLM results
+        if rlm_results.get("semantic_clusters"):
+            print(
+                f"\n🏷️  RLM Module Classifications: {len(rlm_results['semantic_clusters'])} modules classified"
+            )
+
+        if rlm_results.get("hidden_dependencies"):
+            print(
+                f"\n🔍 Hidden Dependencies Found: {len(rlm_results['hidden_dependencies'])}"
+            )
+            for dep in rlm_results["hidden_dependencies"][:3]:
+                print(
+                    f"   {dep.get('source', '?')} -> {dep.get('target', '?')} ({dep.get('type', '?')})"
+                )
+
+        if rlm_results.get("pattern_analysis"):
+            pa = rlm_results["pattern_analysis"]
+            print(
+                f"\n🏛️  Detected Pattern: {pa.get('detected_pattern', 'unknown')} (confidence: {pa.get('confidence', 0):.0%})"
+            )
+
+        if rlm_results.get("refactoring_suggestions"):
+            print("\n💡 Refactoring Suggestions:")
+            for suggestion in rlm_results["refactoring_suggestions"][:3]:
+                print(f"   - {suggestion[:100]}")
+
+        cost = rlm_results.get("cost_summary", {})
+        print(
+            f"\n💰 RLM Cost: ${cost.get('total_cost', 0):.4f} ({cost.get('calls', 0)} calls)"
+        )
+
+    except Exception as e:
+        print(f"\n❌ RLM analysis failed: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+    return analysis
+
+
+def _make_output_prefix(parent: Path, repo_dir: Path) -> str:
+    """Build a filename-safe prefix from a repo's path relative to the parent.
+
+    Example: parent=/repos, repo_dir=/repos/org/my-app -> "org_my-app"
+    """
+    relative = repo_dir.relative_to(parent)
+    return re.sub(r"[^\w\-.]", "_", str(relative).replace(os.sep, "_"))
+
+
+def batch_analyze(
+    parent_path: str,
+    output_dir: str = "outputs/batch",
+    deep: bool = False,
+    backend: Optional[str] = None,
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    exclude: Optional[list] = None,
+    fail_fast: bool = False,
+    skip_visualization: bool = False,
+    skip_report: bool = False,
+) -> None:
+    """Analyze all repositories (immediate subdirectories) under a parent folder.
+
+    For each subdirectory, runs the full pipeline: scan, analyze, generate
+    report and visualization. Output files are named with a prefix derived
+    from the subdirectory name.
+
+    Args:
+        parent_path: Path to the parent folder containing repositories
+        output_dir: Directory for all output files
+        deep: Enable RLM-powered deep analysis
+        backend: RLM backend name
+        model: RLM model name
+        base_url: Override API base URL
+        exclude: Additional directory names to exclude from scanning
+        fail_fast: Stop on first error instead of continuing
+        skip_visualization: Skip generating HTML visualization
+        skip_report: Skip generating HTML report
+    """
+    from rlm_codelens.codebase_graph import CodebaseGraphAnalyzer
+    from rlm_codelens.repo_scanner import RepositoryScanner
+    from rlm_codelens.report_generator import generate_analysis_report
+    from rlm_codelens.visualizer import generate_architecture_visualization
+
+    parent = Path(parent_path).resolve()
+    if not parent.is_dir():
+        print(f"❌ Not a directory: {parent_path}")
+        return
+
+    # Discover immediate subdirectories
+    repo_dirs = sorted(
+        [d for d in parent.iterdir() if d.is_dir() and not d.name.startswith(".")]
+    )
+
+    if not repo_dirs:
+        print(f"❌ No subdirectories found under {parent_path}")
+        return
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    print("\n" + "=" * 70)
+    print("📦 BATCH ANALYSIS")
+    print("=" * 70)
+    print(f"Parent folder: {parent}")
+    print(f"Output directory: {out}")
+    print(f"Repositories found: {len(repo_dirs)}")
+    for d in repo_dirs:
+        print(f"   - {d.name}")
+    print(f"Deep analysis: {'enabled' if deep else 'disabled'}")
+    print("=" * 70)
+
+    # If using Ollama without --model, select once upfront
+    resolved_model = model
+    if deep and base_url and "11434" in base_url and not model:
+        ollama_base = base_url.rstrip("/").removesuffix("/v1")
+        print("\nOllama detected — select a model for all repos:\n")
+        selected = _select_ollama_model(ollama_base)
+        if not selected:
+            print("\n❌ No model selected. Aborting.")
+            return
+        resolved_model = selected
+        print()
+
+    results: List[Dict[str, Any]] = []
+    total = len(repo_dirs)
+
+    for i, repo_dir in enumerate(repo_dirs, 1):
+        prefix = _make_output_prefix(parent, repo_dir)
+        scan_file = str(out / f"scan_{prefix}.json")
+        arch_file = str(out / f"architecture_{prefix}.json")
+        report_file = str(out / f"report_{prefix}.html")
+        viz_file = str(out / f"visualization_{prefix}.html")
+
+        print(f"\n{'=' * 70}")
+        print(f"[{i}/{total}] {repo_dir.name}")
+        print("=" * 70)
+
+        try:
+            # Phase 1: Scan
+            print("  Scanning...")
+            scanner = RepositoryScanner(
+                repo_path=str(repo_dir),
+                exclude_patterns=exclude,
+                include_source=deep,
+            )
+            structure = scanner.scan()
+            structure.name = repo_dir.name
+            structure.save(scan_file)
+            print(
+                f"  Scanned: {structure.total_files} files, {structure.total_lines:,} LOC"
+            )
+
+            # Phase 2: Static analysis
+            print("  Analyzing architecture...")
+            graph_analyzer = CodebaseGraphAnalyzer(structure)
+            analysis = graph_analyzer.analyze()
+            print(
+                f"  Analysis: {analysis.total_modules} modules, "
+                f"{len(analysis.cycles)} cycles, "
+                f"{len(analysis.anti_patterns)} anti-patterns"
+            )
+
+            # Phase 2b: Deep analysis
+            if deep:
+                result = _run_deep_analysis(
+                    structure=structure,
+                    graph_analyzer=graph_analyzer,
+                    analysis=analysis,
+                    backend=backend,
+                    model=resolved_model,
+                    base_url=base_url,
+                    interactive_model_selection=False,
+                )
+                if result is not None:
+                    analysis = result
+
+            # Phase 3: Save architecture JSON
+            analysis.save(arch_file)
+
+            # Phase 4: Visualization
+            if not skip_visualization:
+                print("  Generating visualization...")
+                generate_architecture_visualization(
+                    analysis_file=arch_file,
+                    output_file=viz_file,
+                    open_browser=False,
+                )
+
+            # Phase 5: Report
+            if not skip_report:
+                print("  Generating report...")
+                generate_analysis_report(
+                    analysis_file=arch_file,
+                    output_file=report_file,
+                    open_browser=False,
+                )
+
+            print("  ✅ Done")
+            results.append(
+                {
+                    "repo": repo_dir.name,
+                    "status": "ok",
+                    "files": structure.total_files,
+                    "loc": structure.total_lines,
+                    "modules": analysis.total_modules,
+                    "cycles": len(analysis.cycles),
+                    "anti_patterns": len(analysis.anti_patterns),
+                }
+            )
+
+        except Exception as e:
+            print(f"  ❌ Failed: {e}")
+            results.append(
+                {
+                    "repo": repo_dir.name,
+                    "status": "failed",
+                    "error": str(e),
+                }
+            )
+            if fail_fast:
+                print("\n--fail-fast set, stopping.")
+                break
+
+    # Summary
+    ok = [r for r in results if r["status"] == "ok"]
+    failed = [r for r in results if r["status"] == "failed"]
+
+    print(f"\n{'=' * 70}")
+    print("📊 BATCH SUMMARY")
+    print("=" * 70)
+    print(f"Analyzed: {len(ok)}/{total} repositories")
+    if failed:
+        print(f"Failed: {len(failed)}/{total}")
+    print()
+
+    # Table header
+    name_w = max((len(r["repo"]) for r in results), default=10)
+    name_w = max(name_w, 10)
+    print(
+        f"  {'Repository':<{name_w}}  {'Status':<8}  {'Files':>6}  {'LOC':>10}  "
+        f"{'Modules':>7}  {'Cycles':>6}  {'Issues':>6}"
+    )
+    print("  " + "-" * (name_w + 55))
+
+    for r in results:
+        if r["status"] == "ok":
+            print(
+                f"  {r['repo']:<{name_w}}  {'OK':<8}  {r['files']:>6}  "
+                f"{r['loc']:>10,}  {r['modules']:>7}  {r['cycles']:>6}  "
+                f"{r['anti_patterns']:>6}"
+            )
+        else:
+            err = r.get("error", "unknown")[:40]
+            print(f"  {r['repo']:<{name_w}}  {'FAILED':<8}  {err}")
+
+    print(f"\n  Output directory: {out}")
+    print("=" * 70)

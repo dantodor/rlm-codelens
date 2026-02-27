@@ -38,6 +38,9 @@ uv sync --extra go --extra java
 | **JavaScript/TypeScript** | tree-sitter | `--extra javascript` / `--extra typescript` |
 | **Rust** | tree-sitter | `--extra rust` |
 | **C/C++** | tree-sitter | `--extra cpp` |
+| **C#** | tree-sitter | `--extra csharp` |
+| **Swift** | tree-sitter | `--extra swift` |
+| **Kotlin** | tree-sitter | `--extra kotlin` |
 
 > Python works out of the box. For other languages, just add the extra — tree-sitter grammars are pulled in automatically. Without the grammar, non-Python files are still detected and counted but parsed with basic LOC-only extraction.
 
