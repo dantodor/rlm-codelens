@@ -66,6 +66,10 @@ uv run rlmc analyze-architecture --repo /path/to/repo --ollama --model deepseek-
 
 # Or use OpenRouter (access any model via openrouter.ai)
 uv run rlmc analyze-architecture --repo /path/to/repo --openrouter --model anthropic/claude-sonnet-4
+
+# Batch: analyze all repos under a folder
+uv run rlmc batch-analyze /path/to/customer-repos
+uv run rlmc batch-analyze /path/to/customer-repos --openrouter --model anthropic/claude-sonnet-4
 ```
 
 ### Demo (No API Keys Required)
@@ -140,6 +144,7 @@ flowchart LR
 | `rlmc analyze-architecture [scan.json] --deep` | RLM-powered deep analysis |
 | `rlmc analyze-architecture [scan.json] --ollama` | Local Ollama for deep analysis |
 | `rlmc analyze-architecture [scan.json] --openrouter` | OpenRouter for deep analysis |
+| `rlmc batch-analyze <parent-path>` | Analyze all repos under a parent directory |
 | `rlmc list-models` | List available Ollama models |
 | `rlmc visualize-arch <arch.json>` | Interactive D3.js visualization |
 | `rlmc generate-report <arch.json>` | HTML architecture report |
@@ -153,6 +158,9 @@ flowchart LR
 | `--openrouter` | Use OpenRouter (requires `OPENROUTER_API_KEY`) |
 | `--model <name>` | Model to use (gpt-4o, anthropic/claude-sonnet-4, deepseek-r1, etc.) |
 | `--include-source` | Include source code for deeper analysis |
+| `--fail-fast` | Stop batch on first error |
+| `--skip-visualization` | Skip HTML visualization generation |
+| `--skip-report` | Skip HTML report generation |
 
 ## Proven at Scale
 
