@@ -119,6 +119,13 @@ flowchart LR
         Graph --> Anti[Anti-Patterns]
     end
 
+    subgraph Semantic["jina-grep (Auto)"]
+        Graph --> JinaGrep[Local Semantic Search]
+        JinaGrep --> SemClassify[Module Classification]
+        JinaGrep --> SemAnti[Anti-Pattern Detection]
+        JinaGrep --> SemSignificant[Significant Files]
+    end
+
     subgraph DeepAnalysis["--deep (Optional)"]
         Graph --> RLMApi[RLM API]
         RLMApi --> Classify[Semantic Classification]
@@ -133,6 +140,29 @@ flowchart LR
 ```
 
 **Static analysis** works on any codebase with zero API calls. Add `--deep` for **RLM-powered** semantic analysis.
+
+## Semantic Search (jina-grep)
+
+When [jina-grep](https://github.com/jina-ai/jina-grep-cli) is installed, RLM-Codelens **automatically** enriches analysis with GPU-accelerated local semantic search — no API keys, no cost, runs in milliseconds on Apple Silicon.
+
+```bash
+# Install jina-grep (macOS with Apple Silicon)
+pip install jina-grep-cli
+
+# Then just run rlmc as usual — semantic analysis activates automatically
+uv run rlmc analyze-architecture --repo /path/to/repo
+```
+
+When jina-grep is not installed, everything works exactly as before.
+
+| Capability | What it does |
+|------------|-------------|
+| **Module Classification** | Zero-shot classification of files into architectural layers (data, business, api, util, config, test) |
+| **Anti-Pattern Detection** | Semantic search for god classes, tight coupling, code duplication, deep nesting |
+| **Hidden Dependency Pre-filtering** | Identifies files with dynamic imports, plugin registries, dependency injection |
+| **Significant File Ranking** | Ranks files by architectural importance (entry points, core logic, APIs) |
+
+Results appear in a dedicated **Semantic** tab in the HTML report.
 
 ## CLI Reference
 
@@ -234,6 +264,7 @@ rlm-codelens/
 │   ├── language_support.py        # Tree-sitter grammar loading & language detection
 │   ├── codebase_graph.py          # Module dependency graph builder
 │   ├── architecture_analyzer.py   # RLM-powered deep analysis
+│   ├── semantic_search.py         # jina-grep semantic search (optional)
 │   ├── visualizer.py              # D3.js visualization generator
 │   ├── report_generator.py        # HTML report generator
 │   └── utils/
@@ -291,6 +322,7 @@ MIT License - see [LICENSE](LICENSE).
 - [alexzhang13/rlm](https://github.com/alexzhang13/rlm) - Recursive Language Models
 - [NetworkX](https://networkx.org/) - Graph algorithms
 - [D3.js](https://d3js.org/) - Interactive visualizations
+- [jina-grep](https://github.com/jina-ai/jina-grep-cli) - Local semantic code search
 
 ---
 
