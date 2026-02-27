@@ -555,6 +555,112 @@ def _deep_was_run(data: Dict[str, Any]) -> bool:
     )
 
 
+def _semantic_was_run(data: Dict[str, Any]) -> bool:
+    """Return True if the analysis JSON contains any semantic search fields."""
+    return any(
+        _has_data(data.get(k))
+        for k in (
+            "semantic_classifications",
+            "semantic_anti_patterns",
+            "significant_files",
+        )
+    )
+
+
+def _build_semantic_insights_section(data: Dict[str, Any]) -> str:
+    """Build the semantic search insights section (jina-grep results)."""
+    classifications = data.get("semantic_classifications")
+    anti_patterns = data.get("semantic_anti_patterns")
+    significant = data.get("significant_files")
+
+    if not classifications and not anti_patterns and not significant:
+        return """
+    <section id="semantic-insights">
+      <h2>Semantic Insights</h2>
+      <div class="card">
+        <p style="color:#94a3b8">No semantic analysis data available.
+        Install <code>jina-grep</code> for local semantic search.</p>
+      </div>
+    </section>"""
+
+    parts = ""
+
+    # Semantic classifications table
+    if classifications:
+        static_layers = data.get("layers", {})
+        rows = ""
+        for module_path, sem_layer in sorted(classifications.items()):
+            mod_name = _escape(module_path.split("/")[-1] if "/" in module_path else module_path)
+            sem_layer_esc = _escape(str(sem_layer))
+            static_layer = static_layers.get(module_path, "")
+            diff = ""
+            if static_layer and static_layer != sem_layer:
+                diff = f' <span style="color:#fb923c" title="Static analysis assigned: {_escape(static_layer)}">(static: {_escape(static_layer)})</span>'
+            rows += f"<tr><td>{mod_name}</td><td>{sem_layer_esc}{diff}</td></tr>"
+
+        parts += f"""
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="color:#f1f5f9;font-size:1em;margin-bottom:8px">Semantic Classifications</h3>
+          <p style="color:#94a3b8;font-size:0.85em;margin-bottom:8px">
+            Module layers assigned via local semantic search (jina-grep).
+          </p>
+          <table>
+            <thead><tr><th>Module</th><th>Semantic Layer</th></tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>"""
+
+    # Semantic anti-patterns table
+    if anti_patterns:
+        rows = ""
+        for ap in anti_patterns:
+            ap_type = _escape(str(ap.get("type", "")))
+            module = _escape(str(ap.get("module", "")))
+            details = _escape(str(ap.get("details", "")))
+            severity = _escape(str(ap.get("severity", "low")))
+            sev_color = {"high": "#ef4444", "medium": "#fb923c", "low": "#facc15"}.get(severity, "#94a3b8")
+            rows += f'<tr><td><span class="badge" style="background:{sev_color};color:#0f172a">{severity}</span></td><td>{ap_type}</td><td>{module}</td><td>{details}</td></tr>'
+
+        parts += f"""
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="color:#f1f5f9;font-size:1em;margin-bottom:8px">Semantic Anti-Patterns</h3>
+          <p style="color:#94a3b8;font-size:0.85em;margin-bottom:8px">
+            Anti-patterns detected via semantic code search.
+          </p>
+          <table>
+            <thead><tr><th>Severity</th><th>Type</th><th>Module</th><th>Details</th></tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>"""
+
+    # Significant files table
+    if significant:
+        rows = ""
+        for sf in significant:
+            path = _escape(str(sf.get("path", "")))
+            score = sf.get("score", 0)
+            queries = ", ".join(str(q)[:40] for q in sf.get("matched_queries", []))
+            rows += f"<tr><td>{path}</td><td>{score:.2f}</td><td>{_escape(queries)}</td></tr>"
+
+        parts += f"""
+        <div class="card">
+          <h3 style="color:#f1f5f9;font-size:1em;margin-bottom:8px">Architecturally Significant Files</h3>
+          <p style="color:#94a3b8;font-size:0.85em;margin-bottom:8px">
+            Files ranked by architectural significance via semantic analysis.
+          </p>
+          <table>
+            <thead><tr><th>File</th><th>Score</th><th>Matched Queries</th></tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>"""
+
+    return f"""
+    <section id="semantic-insights">
+      <h2>Semantic Insights</h2>
+      {parts}
+    </section>"""
+
+
 def _build_executive_summary_section(data: Dict[str, Any], health: tuple) -> str:
     """Build an executive summary paragraph synthesizing key findings."""
     label, color, score, _ = health
@@ -1014,6 +1120,7 @@ def generate_analysis_report(
 
     # Build tab contents
     has_deep = _deep_was_run(data)
+    has_semantic = _semantic_was_run(data)
     issue_count = _get_antipattern_count(data) + len(data.get("cycles", []))
 
     # Tab 1: Overview
@@ -1040,7 +1147,12 @@ def generate_analysis_report(
     if has_deep:
         tab_deep = _build_rlm_insights_section(data) + _build_refactoring_section(data)
 
-    # Tab 5: Guidance
+    # Tab 5: Semantic Insights (conditional)
+    tab_semantic = ""
+    if has_semantic:
+        tab_semantic = _build_semantic_insights_section(data)
+
+    # Tab 6: Guidance
     tab_guidance = _build_guidance_section()
 
     # Build tab bar
@@ -1057,6 +1169,9 @@ def generate_analysis_report(
     if has_deep:
         tab_buttons += """
       <button class="tab-btn" data-tab="tab-deep">Deep Analysis</button>"""
+    if has_semantic:
+        tab_buttons += """
+      <button class="tab-btn" data-tab="tab-semantic">Semantic</button>"""
     tab_buttons += """
       <button class="tab-btn" data-tab="tab-guidance">Guidance</button>
     </div>"""
@@ -1069,6 +1184,9 @@ def generate_analysis_report(
     if has_deep:
         tab_panels += f"""
     <div id="tab-deep" class="tab-panel">{tab_deep}</div>"""
+    if has_semantic:
+        tab_panels += f"""
+    <div id="tab-semantic" class="tab-panel">{tab_semantic}</div>"""
     tab_panels += f"""
     <div id="tab-guidance" class="tab-panel">{tab_guidance}</div>"""
 

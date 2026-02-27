@@ -118,6 +118,9 @@ class ArchitectureAnalysis:
         hidden_dependencies: RLM-discovered dynamic imports (optional)
         pattern_analysis: RLM architectural pattern analysis (optional)
         refactoring_suggestions: RLM refactoring suggestions (optional)
+        semantic_classifications: jina-grep layer classifications (optional)
+        semantic_anti_patterns: jina-grep detected anti-patterns (optional)
+        significant_files: jina-grep architecturally significant files (optional)
     """
 
     repository: str
@@ -135,6 +138,11 @@ class ArchitectureAnalysis:
     hidden_dependencies: Optional[List[Dict[str, Any]]] = None
     pattern_analysis: Optional[Dict[str, Any]] = None
     refactoring_suggestions: Optional[List[str]] = None
+
+    # Semantic search fields (populated by semantic_search.py when jina-grep is available)
+    semantic_classifications: Optional[Dict[str, str]] = None
+    semantic_anti_patterns: Optional[List[Dict[str, Any]]] = None
+    significant_files: Optional[List[Dict[str, Any]]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to a JSON-compatible dict."""
@@ -691,6 +699,34 @@ class CodebaseGraphAnalyzer:
                             "type": "hidden",
                         }
                     )
+
+        return analysis
+
+    def enrich_with_semantic(
+        self,
+        semantic_results: Dict[str, Any],
+        analysis: Optional["ArchitectureAnalysis"] = None,
+    ) -> "ArchitectureAnalysis":
+        """Merge semantic search results into the architecture analysis.
+
+        Args:
+            semantic_results: Dict with optional keys: classifications,
+                anti_patterns, significant_files.
+            analysis: Existing analysis to enrich. If None, runs analyze() first.
+
+        Returns:
+            Updated ArchitectureAnalysis.
+        """
+        if analysis is None:
+            analysis = self.analyze()
+
+        analysis.semantic_classifications = semantic_results.get("classifications")
+        analysis.semantic_anti_patterns = semantic_results.get("anti_patterns")
+        analysis.significant_files = semantic_results.get("significant_files")
+
+        # Merge semantic anti-patterns into the main anti_patterns list
+        if analysis.semantic_anti_patterns:
+            analysis.anti_patterns.extend(analysis.semantic_anti_patterns)
 
         return analysis
 

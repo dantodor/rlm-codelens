@@ -347,6 +347,16 @@ def analyze_architecture(
     for layer, count in sorted(layer_counts.items(), key=lambda x: x[1], reverse=True):
         print(f"   {layer}: {count} modules")
 
+    # Semantic analysis (automatic when jina-grep is available)
+    resolved_repo_path = repo_path or getattr(structure, "root_path", None)
+    if resolved_repo_path and Path(resolved_repo_path).is_dir():
+        analysis = _run_semantic_analysis(
+            structure=structure,
+            graph_analyzer=graph_analyzer,
+            analysis=analysis,
+            repo_path=resolved_repo_path,
+        )
+
     # Deep RLM analysis
     if deep:
         deep_result = _run_deep_analysis(
@@ -467,6 +477,77 @@ def generate_report(
         import traceback
 
         traceback.print_exc()
+
+
+def _run_semantic_analysis(
+    structure: Any,
+    graph_analyzer: Any,
+    analysis: Any,
+    repo_path: str,
+) -> Any:
+    """Run local semantic analysis via jina-grep if available.
+
+    Args:
+        structure: RepositoryStructure from scanning
+        graph_analyzer: CodebaseGraphAnalyzer instance
+        analysis: ArchitectureAnalysis from static analysis
+        repo_path: Filesystem path to the repository
+
+    Returns:
+        Updated ArchitectureAnalysis (always returns, never None).
+    """
+    from rlm_codelens.semantic_search import JINA_GREP_AVAILABLE, SemanticSearchAnalyzer
+
+    if not JINA_GREP_AVAILABLE:
+        return analysis
+
+    print(f"\n{'=' * 70}")
+    print("🔎 SEMANTIC ANALYSIS (jina-grep)")
+    print("=" * 70)
+
+    try:
+        from rlm_codelens.config import (
+            JINA_GREP_CODE_MODEL,
+            JINA_GREP_MODEL,
+            JINA_GREP_SCORE_THRESHOLD,
+        )
+
+        analyzer = SemanticSearchAnalyzer(
+            structure=structure,
+            repo_path=repo_path,
+            model=JINA_GREP_MODEL,
+            code_model=JINA_GREP_CODE_MODEL,
+            score_threshold=JINA_GREP_SCORE_THRESHOLD,
+        )
+
+        semantic_results = analyzer.run_all()
+
+        # Enrich analysis
+        analysis = graph_analyzer.enrich_with_semantic(
+            semantic_results, analysis=analysis
+        )
+
+        # Print summary
+        classifications = semantic_results.get("classifications", {})
+        anti_patterns = semantic_results.get("anti_patterns", [])
+        significant = semantic_results.get("significant_files", [])
+        candidates = semantic_results.get("hidden_dep_candidates", [])
+
+        if classifications:
+            print(f"\n🏷️  Semantic Classifications: {len(classifications)} modules")
+        if anti_patterns:
+            print(f"⚠️  Semantic Anti-Patterns: {len(anti_patterns)} findings")
+        if significant:
+            print(f"📌 Significant Files: {len(significant)} identified")
+        if candidates:
+            print(
+                f"🔍 Hidden Dep Candidates: {len(candidates)} files for further analysis"
+            )
+
+    except Exception as e:
+        print(f"\n⚠️  Semantic analysis failed: {e}")
+
+    return analysis
 
 
 def _run_deep_analysis(
@@ -720,6 +801,14 @@ def batch_analyze(
                 f"  Analysis: {analysis.total_modules} modules, "
                 f"{len(analysis.cycles)} cycles, "
                 f"{len(analysis.anti_patterns)} anti-patterns"
+            )
+
+            # Phase 2a: Semantic analysis (automatic when jina-grep available)
+            analysis = _run_semantic_analysis(
+                structure=structure,
+                graph_analyzer=graph_analyzer,
+                analysis=analysis,
+                repo_path=str(repo_dir),
             )
 
             # Phase 2b: Deep analysis

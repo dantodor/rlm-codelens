@@ -30,6 +30,11 @@ RLM_BASE_URL = os.getenv(
 RLM_ENVIRONMENT = os.getenv("RLM_ENVIRONMENT", "local")
 RLM_MAX_ITERATIONS = int(os.getenv("RLM_MAX_ITERATIONS", "30"))
 
+# Semantic Search Configuration (jina-grep)
+JINA_GREP_MODEL = os.getenv("JINA_GREP_MODEL", "jina-embeddings-v3")
+JINA_GREP_CODE_MODEL = os.getenv("JINA_GREP_CODE_MODEL", "jina-code-embeddings-1.5b")
+JINA_GREP_SCORE_THRESHOLD = float(os.getenv("JINA_GREP_SCORE_THRESHOLD", "0.3"))
+
 # Repository Scan Configuration
 SCAN_EXCLUDE_PATTERNS = [
     p.strip() for p in os.getenv("SCAN_EXCLUDE_PATTERNS", "").split(",") if p.strip()
